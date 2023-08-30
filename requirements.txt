@@ -1,0 +1,6 @@
+gradio
+torch
+decord
+pytube @ git+https://github.com/oncename/pytube.git
+imageio
+transformers

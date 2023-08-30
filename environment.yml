@@ -1,7 +1,7 @@
 # To use:
 #   $ conda env create -f environment.yml
 #   $ conda activate <name>
-name: machinelearnear-whisperx
+name: machinelearnear-dev
 dependencies:
   - python=3.10
   - pip
@@ -14,3 +14,9 @@ dependencies:
   - pip:
     - git+https://github.com/m-bain/whisperx.git
     - yt-dlp
+    - gradio
+    - torch
+    - transformers
+    - decord
+    - pytube @ git+https://github.com/oncename/pytube.git
+    - imageio
