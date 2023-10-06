@@ -4,3 +4,4 @@ decord
 pytube @ git+https://github.com/oncename/pytube.git
 imageio
 transformers
+pyannote.audio

@@ -18,6 +18,9 @@ from pyannote.audio import Audio
 from pyannote.core import Segment
 from scipy.spatial.distance import cdist
 
+# ---- extra vocab ---- #
+prompt = "LELIQ FMI CONICET AFIP PBI AFJP Milei Bullrich Massa Bregman Schiaretti"
+
 # ---- logging ---- #
 # set up root logger
 logger = logging.getLogger()
@@ -124,7 +127,7 @@ def save_dict_to_disk(data_dict, data, candidate_name, save_dir, filename:str = 
 def verify_speaker_in_audio(
         audio_pipe, reference_wav_fname, segment_reference,
         waveform_reference, embedding_reference, target_audio,
-        cdist_threshold, embeddings_model):
+        cdist_threshold, embeddings_model, min_appearance_time):
 
     # load the raw audio file
     waveform, sample_rate = audio_pipe(target_audio)
@@ -132,10 +135,10 @@ def verify_speaker_in_audio(
     # determine the total duration of the audio file
     total_duration = waveform.shape[1] / sample_rate
     num_chunks = int(np.ceil(total_duration / 30))
-
     results = []
+    passed_check = False
 
-    # split audio into 30-second chunks and perform speaker verification for each chunk
+    # split audio into 30-second chunks and perform speaker verification for each chunk at diff. checks
     for i in range(num_chunks):
         start_time = i * 30
         end_time = (i + 1) * 30
@@ -162,9 +165,25 @@ def verify_speaker_in_audio(
         }
         results.append(chunk_result)
 
-    # check if 'is_candidate' is `True`
+        if i == 10:  # or 5 minutes, depending on your chunk size
+            num_true_candidates = sum([result['is_candidate'] for result in results])
+            early_check = num_true_candidates / len(results)
+            if early_check >= min_appearance_time:
+                passed_check = True
+                break
+
+        elif i == int(num_chunks * 0.50):
+            num_true_candidates = sum([result['is_candidate'] for result in results])
+            mid_check = num_true_candidates / len(results)
+            if mid_check >= min_appearance_time:
+                passed_check = True
+                break
+
+        if not passed_check and i > int(num_chunks * 0.50):
+            break  # exit loop if no checks passed and we're past this point
+
     num_true_candidates = sum([result['is_candidate'] for result in results])
-    return num_true_candidates / len(results)
+    return passed_check, ( num_true_candidates / len(results) )
 
 def main():
     parser = argparse.ArgumentParser(description='process and transcribe YouTube videos.')
@@ -179,16 +198,18 @@ def main():
                         help='Temporary directory for intermediate files (default: ../data/temp_audio)')
     parser.add_argument('--output_dir', default='../output',
                         help='Output directory for saving results (default: ../output)')
-    parser.add_argument('--device', default="cuda",
-                        help='Device for processing (default: cuda)')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='Batch size for processing (default: 32)')
     parser.add_argument('--compute_type', default="float16",
                         help='Compute type for processing (default: float16)')
-    parser.add_argument('--min_appearance_time', default=0.20,
+    parser.add_argument('--min_appearance_time', default=0.10,
                         help='Percentage time we want the main speaker to speak in the video')
     args = parser.parse_args()
 
+    # setting device on GPU if available, else CPU
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    logging.info(f'Using device: {device}')
+    
     # assigning variables from argparse
     hf_token = args.hf_token
     cdist_threshold = args.cdist_threshold
@@ -197,18 +218,20 @@ def main():
     temp_dir = args.temp_dir
     output_dir = args.output_dir
     target_audio = f"{args.temp_dir}/audio.wav"
-    device = args.device
     batch_size = args.batch_size
     compute_type = args.compute_type
     min_appearance_time = args.min_appearance_time
 
     # load whisper model
-    model = whisperx.load_model("large-v2", device, compute_type=compute_type)
-    logging.info('OpenAI Whisper "large-v2" model is loaded')
+    model = whisperx.load_model(
+        "large-v2", device=device, compute_type=compute_type)
+    logging.info('OpenAI whisper "large-v2" model is loaded')
 
     # load embeddings model
     embeddings_model = PretrainedSpeakerEmbedding(
-        "speechbrain/spkrec-ecapa-voxceleb", device=device)
+        "speechbrain/spkrec-ecapa-voxceleb",
+        use_auth_token=hf_token,
+        device=torch.device("cuda"))
     logging.info('Embeddings model "speechbrain/spkrec-ecapa-voxceleb" loaded')
 
     # read data and start pipeline
@@ -238,22 +261,25 @@ def main():
 
         # double-check if candidate is the main speaker in the video or not
         logging.info(f'Checking if candidate "{each.candidate_name}" is the main speaker..')
-        appearance_time_from_main_speaker = verify_speaker_in_audio(
+        is_main_speaker, appearance_time_from_main_speaker = verify_speaker_in_audio(
             audio_pipe, reference_wav_fname, segment_reference,
             waveform_reference, embedding_reference, target_audio,
-            cdist_threshold, embeddings_model)
+            cdist_threshold, embeddings_model, min_appearance_time)
 
-        if appearance_time_from_main_speaker < min_appearance_time:
+        if not is_main_speaker:
             logging.info(f'Candidate "{each.candidate_name}" not found')
             logging.info(f'Candidate only appeared: {appearance_time_from_main_speaker:.2f}%')
             shutil.rmtree(temp_dir)
             continue
+        else:
+            logging.info(f'Candidate "{each.candidate_name}" WAS found!')
 
         # ---- transcription starts ---- #
-        logging.info(f'Start transcription for: "{each.url}"')
+        logging.info(f'Starting transcription for: "{each.url}"')
         # transcribe and perform speaker diarization
         audio = whisperx.load_audio(target_audio)
-        result = model.transcribe(audio, batch_size=batch_size, language='es')
+        result = model.transcribe(
+            audio, batch_size=batch_size, language='es')
 
         # align whisper output
         model_a, metadata = whisperx.load_align_model(
@@ -271,10 +297,18 @@ def main():
         logging.info(f'Finished transcription for: "{each.url}"')
 
         # ---- speaker verification starts ---- #
+        # load the raw audio file
+        waveform, sample_rate = audio_pipe(target_audio)
+        # determine the total duration of the audio file
+        wav_duration = waveform.shape[1] / sample_rate
+
         # add cosine dist to each segment in the results
         for segment in result['segments']:
             # extract embedding for a speaker speaking between t=Xs and t=Ys
-            speaker_target = Segment(segment['start'], segment['end'])
+            if segment['end'] > wav_duration:
+                speaker_target = Segment(segment['start'], wav_duration)
+            else:
+                speaker_target = Segment(segment['start'], segment['end'])
             waveform_target, sample_rate = audio_pipe.crop(
                 target_audio, speaker_target)
             embedding_target = embeddings_model(waveform_target[None])

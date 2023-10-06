@@ -38,6 +38,8 @@ mapping = {
     "javier milei": "milei",
     "sergio massa": "massa",
     "patricia bullrich": "bullrich",
+    "myriam bregman": "bregman",
+    "juan schiaretti": "schiaretti",
 }
 
 # ---- helper funcs ---- #
@@ -222,7 +224,12 @@ def main():
     if save_dir_lq.exists(): shutil.rmtree(save_dir_lq)
     Path(save_dir_lq).mkdir(parents=True, exist_ok=True)
 
-    search_these_names = ["Javier Milei", "Sergio Massa", "Patricia Bullrich"]
+    search_these_names = ["Javier Milei",
+                          "Sergio Massa",
+                          "Patricia Bullrich",
+                          "Myriam Bregman",
+                          "Juan Schiaretti"]
+
     URL = 'https://www.youtube.com/results?search_query=%22{}%22&sp=EgQQARgC'
     extract_youtube_info(URL, search_these_names, save_dir_lq)
     lq_processor = YouTubeDataProcessor_Search(save_dir_lq)
