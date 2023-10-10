@@ -1,0 +1,22 @@
+name: Deploy to Prod Environment (S3)
+
+on:
+  # Deploy on every new tag
+  release:
+    types: [published]
+  # Deploy manually
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    container: cnservices/aws-cli
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.S3_DEPLOYER_AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.S3_DEPLOYER_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Deploy
+        run: aws s3 sync output/ s3://preguntalealcandidato.com
