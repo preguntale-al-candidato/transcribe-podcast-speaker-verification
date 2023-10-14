@@ -93,11 +93,20 @@ python scripts/run_process.py --hf_token TU_HF_TOKEN --data_dir RUTA_DEL_DATA --
 
 Reemplazá las palabras en mayúscula por tus datos.
 
-## 💡 Algunos piques
+## 💡 Algunas notas
 
 - Seguí los pasos como te los di, así no hay lío.
 - Si te encontrás con algún error, revisá que las rutas de los archivos estén bien y que hayas puesto todos los argumentos necesarios.
 - No te olvides de poner tu token de Hugging Face cuando uses el script.
+- Contar tokens para Llama-2: https://belladoreai.github.io/llama-tokenizer-js/example-demo/build/ y para OpenAI: https://platform.openai.com/tokenizer
+
+### Problemas con WhisperX
+Ver este (issue)[https://github.com/m-bain/whisperX/issues/499]. Tenes que hacer esto:
+```
+pip install pyannote.audio==3.0.1
+pip uninstall onnxruntime
+pip install --force-reinstall onnxruntime-gpu
+```
 
 ## 🤝 ¿Querés sumarte?
 

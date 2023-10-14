@@ -257,7 +257,11 @@ def main():
         embedding_reference = embeddings_model(waveform_reference[None])
 
         # download audio from youtube url
-        download_audio(each.url, temp_dir)
+        try:
+            download_audio(each.url, temp_dir)
+        except Exception as e:
+            logging.error(f"Failed to download audio for URL {each.url}. Error: {e}")
+            continue
 
         # double-check if candidate is the main speaker in the video or not
         logging.info(f'Checking if candidate "{each.candidate_name}" is the main speaker..')
